@@ -8,7 +8,7 @@ def get_base64(file):
     data = None
     with open(file, 'rb') as f:
         data = base64.b64encode(f.read())  # 读取文件内容，转换为base64编码
-    return dataz
+    return data
 
 import json
 #public params
