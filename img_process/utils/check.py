@@ -23,6 +23,31 @@ max_param1 = 35
 min_param2 = 0
 max_param2 = 5
 
+#有点p1、p2,对应向量v1、v2，求相应直线交点
+def find_point(point, vector):
+    a = []
+    b = []
+    for p, v in zip(point, vector):
+        if v[0] == 0:
+            a.append([1, 0])
+            b.append([p[0]])
+            continue
+        if v[1] == 0:
+            a.append([0, 1])
+            b.append([p[1]])
+            continue
+        k = v[1] / v[0]
+        this_b = -k * p[0] + p[1]
+        a.append([-k, 1])
+        b.append([this_b])
+    a = np.array(a)
+    b = np.array(b)
+    x = np.linalg.solve(a,b)
+    return x
+
+
+
+
 def DL_check_rect(src_path,out_path,level='simple'):
     out_dir_path = os.path.dirname(out_path)
     if not os.path.exists(out_dir_path):
@@ -31,8 +56,8 @@ def DL_check_rect(src_path,out_path,level='simple'):
     img = cv2.imread(src_path)
 
     img_new = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img_new = cv2.copyMakeBorder(img_new, 5, 5, 5, 5, cv2.BORDER_REPLICATE)
-    kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    # img_new = cv2.copyMakeBorder(img_new, 5, 5, 5, 5, cv2.BORDER_REPLICATE)
+    kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     # img_new = cv2.morphologyEx(img_new, cv2.MORPH_OPEN, kernel2)
     img_new = cv2.adaptiveThreshold(img_new, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, param1, param2)
     img_new = cv2.morphologyEx(img_new, cv2.MORPH_OPEN, kernel2)
@@ -63,35 +88,12 @@ def DL_check_rect(src_path,out_path,level='simple'):
     cv2.imwrite(out_path + 'lineImg.jpg', lineImg)
 
     # lines = cv2.HoughLines(lineImg, 1, np.pi / 180, int(min(img.shape[0], img.shape[1]) / 2))  # 这里对最后参数使用了经验型的值
-    lines = cv2.HoughLinesP(lineImg, 1, np.pi / 360, int(min(img.shape[0], img.shape[1]) / 2))  # 这里对最后参数使用了经验型的值
+    lines = cv2.HoughLinesP(lineImg, 1, np.pi / 360, int(min(img.shape[0], img.shape[1]) / 3))  # 这里对最后参数使用了经验型的值
 
     lines = lines[:,0,:]
     lineImg = cv2.cvtColor(lineImg, cv2.COLOR_GRAY2RGB)
     newLines_IMG = np.zeros(img_new.shape[:2], dtype=np.uint8)
 
-    for (x1, y1, x2, y2) in lines:
-        for x in (x1, x2):
-            if x < 20 or x > lineImg.shape[1] - 20:
-                continue
-        for y in (y1, y2):
-            if y < 20 or y > lineImg.shape[0] - 20:
-                continue
-        cv2.line(lineImg, (x1, y1), (x2, y2), (0, 255, 0), 5)
-        cv2.line(newLines_IMG, (x1, y1), (x2, y2), 255, 5)
-
-    cv2.imwrite(out_path + 'lineImg.jpg', lineImg)
-    cv2.imwrite(out_path + 'newLines_IMG.jpg', newLines_IMG)
-
-    image, cnts, hierarchy = cv2.findContours(newLines_IMG, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    maxArea = 0
-    color = ((255, 0, 0), (0, 255, 0), (0, 0, 255))
-    i = 0
-    for c in cnts:
-        if cv2.contourArea(c) > maxArea:
-            maxAreaContour = c
-            maxArea = cv2.contourArea(c)
-            # img_new = cv2.drawContours(img_new, c, -1, color[i % 3], 8)
-            # i += 1
     min_x_y = 10000000
     max_x_y = -1
     max_x = -10000000
@@ -101,32 +103,104 @@ def DL_check_rect(src_path,out_path,level='simple'):
     RB_point = -1
     RT_point = -1
     LB_point = -1
+
+    for (x1, y1, x2, y2) in lines:
+        for x in (x1, x2):
+            if x < 20 or x > lineImg.shape[1] - 20:
+                continue
+        for y in (y1, y2):
+            if y < 20 or y > lineImg.shape[0] - 20:
+                continue
+        for x, y in ((x1, y1), (x2, y2)):
+            if x + y < min_x_y:
+                min_x_y = x + y
+                LT_point = [x + 20, y + 20]
+            if x + y > max_x_y:
+                max_x_y = x + y
+                RB_point = [x - 20, y - 20]
+            if x - y > max_x:
+                max_x = x - y
+                RT_point = [x - 20 , y + 20]
+            if y - x > max_y:
+                max_y = y - x
+                LB_point = [x + 20, y - 20]
+
+        cv2.line(lineImg, (x1, y1), (x2, y2), (0, 255, 0), 5)
+        cv2.line(newLines_IMG, (x1, y1), (x2, y2), 255, 5)
+
+    #按照左上角，右上角，左下角，右下角来存储
+    angles = []
+    L_TOP2BOT = np.array(LT_point) - np.array(LB_point)
+    R_TOP2BOT = np.array(RT_point) - np.array(RB_point)
+    T_LEFT2RIG = np.array(RT_point) - np.array(LT_point)
+    B_LEFT2RIG = np.array(RB_point) - np.array(LB_point)
+    angles.append(np.arccos(T_LEFT2RIG.dot(-L_TOP2BOT) / (np.sqrt(np.sum(T_LEFT2RIG * T_LEFT2RIG)) * np.sqrt(np.sum(L_TOP2BOT * L_TOP2BOT)))))
+    angles.append(np.arccos(T_LEFT2RIG.dot(R_TOP2BOT) / (np.sqrt(np.sum(T_LEFT2RIG * T_LEFT2RIG)) * np.sqrt(np.sum(R_TOP2BOT * R_TOP2BOT)))))
+    angles.append(np.arccos(B_LEFT2RIG.dot(L_TOP2BOT) / (np.sqrt(np.sum(B_LEFT2RIG * B_LEFT2RIG)) * np.sqrt(np.sum(L_TOP2BOT * L_TOP2BOT)))))
+    angles.append(np.arccos(-B_LEFT2RIG.dot(R_TOP2BOT) / (np.sqrt(np.sum(B_LEFT2RIG * B_LEFT2RIG)) * np.sqrt(np.sum(R_TOP2BOT * R_TOP2BOT)))))
+    angles -= np.mean(angles)
+    angles = np.power(angles, 2)
+    if angles[0] == np.max(angles):
+        x = find_point((LB_point, RT_point), (R_TOP2BOT, B_LEFT2RIG))
+        LT_point = [int(x[0][0]), int(x[1][0])]
+    if angles[1] == np.max(angles):
+        x = find_point((LT_point, RB_point), (B_LEFT2RIG, L_TOP2BOT))
+        RT_point = [int(x[0][0]), int(x[1][0])]
+    if angles[2] == np.max(angles):
+        x = find_point((LT_point, RB_point), (R_TOP2BOT, T_LEFT2RIG))
+        LB_point = [int(x[0][0]), int(x[1][0])]
+    if angles[3] == np.max(angles):
+        x = find_point((LB_point, RT_point), (T_LEFT2RIG, L_TOP2BOT))
+        RB_point = [int(x[0][0]), int(x[1][0])]
+
+    cv2.imwrite(out_path + 'lineImg.jpg', lineImg)
+    cv2.imwrite(out_path + 'newLines_IMG.jpg', newLines_IMG)
+
+    image, cnts, hierarchy = cv2.findContours(newLines_IMG, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+    maxArea = 0
+    color = ((255, 0, 0), (0, 255, 0), (0, 0, 255))
+    i = 0
+    findC = img_new.copy()
+    for c in cnts:
+        if cv2.contourArea(c) > maxArea:
+            maxAreaContour = c
+            maxArea = cv2.contourArea(c)
+            img_new = cv2.drawContours(findC, c, -1, color[i % 3], 8)
+            i += 1
+    img_new = cv2.drawContours(findC, maxAreaContour, -1, (0, 0, 0), 8)
+    cv2.imwrite(out_path + '___findC.jpg', findC)
+
     area = cv2.contourArea(maxAreaContour)
     c = maxAreaContour
-    for cc in c:
-        # logger.debug(cc)
-        x = cc[0][0]
-        y = cc[0][1]
-        if x + y < min_x_y:
-            min_x_y = x + y
-            LT_point = [x, y]
-        if x + y > max_x_y:
-            max_x_y = x + y
-            RB_point = [x, y]
-        if x - y > max_x:
-            max_x = x - y
-            RT_point = [x, y]
-        if y - x > max_y:
-            max_y = y - x
-            LB_point = [x, y]
+    # for cc in c:
+    #     # logger.debug(cc)
+    #     x = cc[0][0]
+    #     y = cc[0][1]
+    #     if x + y < min_x_y:
+    #         min_x_y = x + y
+    #         LT_point = [x + 20, y + 20]
+    #     if x + y > max_x_y:
+    #         max_x_y = x + y
+    #         RB_point = [x - 20, y - 20]
+    #     if x - y > max_x:
+    #         max_x = x - y
+    #         RT_point = [x - 20 , y + 20]
+    #     if y - x > max_y:
+    #         max_y = y - x
+    #         LB_point = [x + 20, y - 20]
 
     img_new = cv2.drawContours(img_new, maxAreaContour, -1, (255, 0, 0), 8)
+    #计算每个边的向量，计算内积，反三角函数算下角度，之后计算方差，哪个方差大哪个店就不对，之后算下点
+    cv2.circle(img_new, tuple(LT_point), 10, (0, 255, 0), -1)
+    cv2.circle(img_new, tuple(RB_point), 10, (0, 255, 0), -1)
+    cv2.circle(img_new, tuple(RT_point), 10, (0, 255, 0), -1)
+    cv2.circle(img_new, tuple(LB_point), 10, (0, 255, 0), -1)
     cv2.imwrite(out_path + 'final.jpg', img_new)
 
 
     try:
-        height = max(LB_point[1] - LT_point[1], RB_point[1] - RT_point[1])
-        width = max(RT_point[0] - LT_point[0], RB_point[0] - LB_point[0])
+        height = min(LB_point[1] - LT_point[1], RB_point[1] - RT_point[1])
+        width = min(RT_point[0] - LT_point[0], RB_point[0] - LB_point[0])
         pts1 = np.float32([LT_point, RT_point, LB_point, RB_point])
         pts2 = np.float32([[0, 0], [width, 0], [0, height], [width, height]])
         # 仿射变换
