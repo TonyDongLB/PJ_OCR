@@ -64,8 +64,6 @@ def change_tb(src_path,out_path):
     img_height = img.shape[0]
     img_width = img.shape[1]
 
-    logger.debug("width:",img_width)
-    logger.debug("height:",img_height)
     pts1 = np.float32([[0, 0], [img_width, img_height], [0, img_height]])
     pts2 = np.float32([[img_width, img_height], [0, 0], [img_width, 0]])
     M = cv2.getAffineTransform(pts1, pts2)

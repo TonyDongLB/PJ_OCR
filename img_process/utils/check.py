@@ -42,13 +42,19 @@ def find_point(point, vector):
         b.append([this_b])
     a = np.array(a)
     b = np.array(b)
-    x = np.linalg.solve(a,b)
+    try:
+        x = np.linalg.solve(a, b)
+    except:
+        x = []
+        return x
+    else:
+        return x
     return x
 
 
 
 
-def DL_check_rect(src_path,out_path,level='simple'):
+def DL_check_rect(src_path,out_path, file_path_src):
     out_dir_path = os.path.dirname(out_path)
     if not os.path.exists(out_dir_path):
         os.makedirs(out_dir_path)
@@ -69,6 +75,7 @@ def DL_check_rect(src_path,out_path,level='simple'):
         area_map[area] = c
     sort_keys = sorted(area_map.keys())
     lineImg = np.zeros(img_new.shape[:2], dtype=np.uint8)
+    #画出面积最大的三个contour
     for i in range(-3, 0):
         c = area_map.get(sort_keys[i])
         if i == -3:
@@ -82,8 +89,6 @@ def DL_check_rect(src_path,out_path,level='simple'):
                 img_new = cv2.drawContours(img_new, c, -1, (0, 0, 255), 5)
                 lineImg = cv2.drawContours(lineImg, c, -1, 255, 8)
 
-    if os.path.exists(out_path + 'test.jpg'):
-        os.remove(out_path + 'test.jpg')
     cv2.imwrite(out_path + 'test.jpg', img_new)
     cv2.imwrite(out_path + 'lineImg.jpg', lineImg)
 
@@ -105,53 +110,187 @@ def DL_check_rect(src_path,out_path,level='simple'):
     LB_point = -1
 
     for (x1, y1, x2, y2) in lines:
-        for x in (x1, x2):
-            if x < 20 or x > lineImg.shape[1] - 20:
-                continue
-        for y in (y1, y2):
-            if y < 20 or y > lineImg.shape[0] - 20:
-                continue
-        for x, y in ((x1, y1), (x2, y2)):
-            if x + y < min_x_y:
-                min_x_y = x + y
-                LT_point = [x + 20, y + 20]
-            if x + y > max_x_y:
-                max_x_y = x + y
-                RB_point = [x - 20, y - 20]
-            if x - y > max_x:
-                max_x = x - y
-                RT_point = [x - 20 , y + 20]
-            if y - x > max_y:
-                max_y = y - x
-                LB_point = [x + 20, y - 20]
+        # for x in (x1, x2):
+        #     if x < 20 or x > lineImg.shape[1] - 20:
+        #         continue
+        # for y in (y1, y2):
+        #     if y < 20 or y > lineImg.shape[0] - 20:
+        #         continue
+        # for x, y in ((x1, y1), (x2, y2)):
+        #     if x + y < min_x_y:
+        #         min_x_y = x + y
+        #         LT_point = [x + 20, y + 20]
+        #     if x + y > max_x_y:
+        #         max_x_y = x + y
+        #         RB_point = [x - 20, y - 20]
+        #     if x - y > max_x:
+        #         max_x = x - y
+        #         RT_point = [x - 20 , y + 20]
+        #     if y - x > max_y:
+        #         max_y = y - x
+        #         LB_point = [x + 20, y - 20]
 
         cv2.line(lineImg, (x1, y1), (x2, y2), (0, 255, 0), 5)
         cv2.line(newLines_IMG, (x1, y1), (x2, y2), 255, 5)
 
-    #按照左上角，右上角，左下角，右下角来存储
-    angles = []
-    L_TOP2BOT = np.array(LT_point) - np.array(LB_point)
-    R_TOP2BOT = np.array(RT_point) - np.array(RB_point)
-    T_LEFT2RIG = np.array(RT_point) - np.array(LT_point)
-    B_LEFT2RIG = np.array(RB_point) - np.array(LB_point)
-    angles.append(np.arccos(T_LEFT2RIG.dot(-L_TOP2BOT) / (np.sqrt(np.sum(T_LEFT2RIG * T_LEFT2RIG)) * np.sqrt(np.sum(L_TOP2BOT * L_TOP2BOT)))))
-    angles.append(np.arccos(T_LEFT2RIG.dot(R_TOP2BOT) / (np.sqrt(np.sum(T_LEFT2RIG * T_LEFT2RIG)) * np.sqrt(np.sum(R_TOP2BOT * R_TOP2BOT)))))
-    angles.append(np.arccos(B_LEFT2RIG.dot(L_TOP2BOT) / (np.sqrt(np.sum(B_LEFT2RIG * B_LEFT2RIG)) * np.sqrt(np.sum(L_TOP2BOT * L_TOP2BOT)))))
-    angles.append(np.arccos(-B_LEFT2RIG.dot(R_TOP2BOT) / (np.sqrt(np.sum(B_LEFT2RIG * B_LEFT2RIG)) * np.sqrt(np.sum(R_TOP2BOT * R_TOP2BOT)))))
-    angles -= np.mean(angles)
-    angles = np.power(angles, 2)
-    if angles[0] == np.max(angles):
-        x = find_point((LB_point, RT_point), (R_TOP2BOT, B_LEFT2RIG))
-        LT_point = [int(x[0][0]), int(x[1][0])]
-    if angles[1] == np.max(angles):
-        x = find_point((LT_point, RB_point), (B_LEFT2RIG, L_TOP2BOT))
-        RT_point = [int(x[0][0]), int(x[1][0])]
-    if angles[2] == np.max(angles):
-        x = find_point((LT_point, RB_point), (R_TOP2BOT, T_LEFT2RIG))
-        LB_point = [int(x[0][0]), int(x[1][0])]
-    if angles[3] == np.max(angles):
-        x = find_point((LB_point, RT_point), (T_LEFT2RIG, L_TOP2BOT))
-        RB_point = [int(x[0][0]), int(x[1][0])]
+    lines = cv2.HoughLines(newLines_IMG, 1, np.pi / 180, int(min(img.shape[0], img.shape[1]) / 2))
+    lines = lines[:, 0, :]
+    # 对距离很近切角度类同的直线进行归一，防止影响结果
+    newLines = []
+    while (i < len(lines)):
+        line1 = lines[i]
+        j = 0
+        while (j < len(lines)):
+            if j == i:
+                j += 1
+                continue
+            line2 = lines[j]
+            if abs(line1[0] - line2[0]) < 20:
+                if abs(line1[1] - line2[1]) < np.pi / 4:
+                    lines[i][0] = (line1[0] + line2[0]) / 2
+                    lines[i][1] = (line1[1] + line2[1]) / 2
+            j += 1
+        newLines.append(lines[i])
+        i += 1
+    lines = np.array(newLines)
+    line_points = []
+    newLines___ = cv2.cvtColor(newLines_IMG, cv2.COLOR_GRAY2BGR)
+    for line in lines:
+        rho = line[0]  # 第一个元素是距离rho
+        theta = line[1]  # 第二个元素是角度theta
+        if (theta < (np.pi / 4.)) or (theta > (3. * np.pi / 4.0)):  # 垂直直线
+            # 该直线与第一行的交点
+            pt1 = (int(rho / np.cos(theta)), 0)
+            # 该直线与最后一行的焦点
+            pt2 = (int((rho - lineImg.shape[0] * np.sin(theta)) / np.cos(theta)), lineImg.shape[0])
+            # 绘制一条白线
+            cv2.line(newLines___, pt1, pt2, (0, 255, 0), 5)
+            line_points.append([pt1, pt2])
+            # cv2.line(newLines_IMG, pt1, pt2, 255, 5)
+        else:  # 水平直线
+            # 该直线与第一列的交点
+            pt1 = (0, int(rho / np.sin(theta)))
+            # 该直线与最后一列的交点
+            pt2 = (lineImg.shape[1], int((rho - lineImg.shape[1] * np.cos(theta)) / np.sin(theta)))
+            # 绘制一条直线
+            cv2.line(newLines___, pt1, pt2, (0, 255, 0), 5)
+            line_points.append([pt1, pt2])
+            # cv2.line(newLines_IMG, pt1, pt2, 255, 5)
+    newLine_points = []
+    drawlines = np.zeros(img_new.shape)
+    #去掉图片边界上的噪声组成的直线。
+    for line_p in line_points:
+        p1 = line_p[0]
+        p2 = line_p[1]
+        if (p1[0] < 50 and p2[0] < 50) or (p1[0] > lineImg.shape[1] - 50 and p2[0] > lineImg.shape[1] - 50):
+            continue
+        if (p1[1] < 50 and p2[1] < 50) or (p1[1] > lineImg.shape[0] - 50 and p2[1] > lineImg.shape[0] - 50):
+            continue
+        newLine_points.append(line_p)
+        cv2.line(drawlines, p1, p2, (0, 255, 0), 5)
+
+    cv2.imwrite(out_path + 'newLines1__11111_.jpg', drawlines)
+    line_points = newLine_points.copy()
+    newLine_points.clear()
+    #这时候应该计算两条直线的两点，距离不超过一定距离后，应该合并到一起，不然有噪音点。
+    print(len(line_points))
+    for i in range(len(line_points)):
+        print(i)
+        line1 = line_points[i]
+        is_unique = True
+        for j in range(len(newLine_points)):
+            line2 = newLine_points[j]
+            dis1 = np.sqrt(np.power(line1[0][0] - line2[0][0], 2) + np.power(line1[0][1] - line2[0][1], 2))
+            dis2 = np.sqrt(np.power(line1[1][0] - line2[1][0], 2) + np.power(line1[1][1] - line2[1][1], 2))
+            if dis1 < 20 and dis2 < 20:
+                line2[0] = [int((line1[0][0] + line2[0][0]) / 2), int((line1[0][1] + line2[0][1]) / 2)]
+                line2[1] = [int((line1[1][0] + line2[1][0]) / 2), int((line1[1][1] + line2[1][1]) / 2)]
+                is_unique = False
+                break
+        if is_unique:
+            newLine_points.append(line1)
+    line_points = newLine_points
+
+
+    X_points = []
+    for i in range(len(line_points)):
+        j = i + 1
+        while j < len(line_points):
+            line1 = line_points[i]
+            line2 = line_points[j]
+            p1 = line_points[j][0]
+            p2 = line_points[j][1]
+            point = [line1[0], line2[0]]
+            v1 = [line1[1][0] - line1[0][0], line1[1][1] - line1[0][1]]
+            v2 = [line2[1][0] - line2[0][0], line2[1][1] - line2[0][1]]
+            vector = [v1, v2]
+            x = find_point(point, vector)
+            if len(x) != 0:
+                X_point = (int(x[0][0]), int(x[1][0]))
+                if X_point[0] < 0 or X_point[0] > img_new.shape[1]:
+                    j += 1
+                    continue
+                if X_point[1] < 0 or X_point[1] > img_new.shape[0]:
+                    j += 1
+                    continue
+                X_points.append(X_point)
+                cv2.circle(newLines___, X_point, 10, (0, 0, 255), -1)
+            j += 1
+    # for x in (x1, x2):
+    #     if x < 20 or x > lineImg.shape[1] - 20:
+    #         continue
+    # for y in (y1, y2):
+    #     if y < 20 or y > lineImg.shape[0] - 20:
+    #         continue
+    for x, y in X_points:
+        if x + y < min_x_y:
+            min_x_y = x + y
+            LT_point = [x, y]
+        if x + y > max_x_y:
+            max_x_y = x + y
+            RB_point = [x, y]
+        if x - y > max_x:
+            max_x = x - y
+            RT_point = [x, y]
+        if y - x > max_y:
+            max_y = y - x
+            LB_point = [x, y]
+
+    for point1 in [LT_point, RB_point, RT_point, LB_point]:
+        for point2 in X_points:
+            dis = np.sqrt(np.power(point1[0] - point2[0], 2) + np.power(point1[1] - point2[1], 2))
+            if dis < 40:
+                point1 = point2
+    LT_point = ((LT_point[0] + 40) * 2, (LT_point[1] + 40) * 2)
+    RB_point = ((RB_point[0] - 40) * 2, (RB_point[1] - 40) * 2)
+    RT_point = ((RT_point[0] - 40) * 2, (RT_point[1] + 40) * 2)
+    LB_point = ((LB_point[0] + 40) * 2, (LB_point[1] - 40) * 2)
+    cv2.imwrite(out_path + 'newLines1___.jpg', newLines___)
+
+    #按照左上角，右上角，左下角，右下角来存储--------使用其他三个正确点的位置信息来推断最后一个点的位置，但是因为不是平行的，所以失败了  BY DL
+    # angles = []
+    # L_TOP2BOT = np.array(LT_point) - np.array(LB_point)
+    # R_TOP2BOT = np.array(RT_point) - np.array(RB_point)
+    # T_LEFT2RIG = np.array(RT_point) - np.array(LT_point)
+    # B_LEFT2RIG = np.array(RB_point) - np.array(LB_point)
+    # angles.append(np.arccos(T_LEFT2RIG.dot(-L_TOP2BOT) / (np.sqrt(np.sum(T_LEFT2RIG * T_LEFT2RIG)) * np.sqrt(np.sum(L_TOP2BOT * L_TOP2BOT)))))
+    # angles.append(np.arccos(T_LEFT2RIG.dot(R_TOP2BOT) / (np.sqrt(np.sum(T_LEFT2RIG * T_LEFT2RIG)) * np.sqrt(np.sum(R_TOP2BOT * R_TOP2BOT)))))
+    # angles.append(np.arccos(B_LEFT2RIG.dot(L_TOP2BOT) / (np.sqrt(np.sum(B_LEFT2RIG * B_LEFT2RIG)) * np.sqrt(np.sum(L_TOP2BOT * L_TOP2BOT)))))
+    # angles.append(np.arccos(-B_LEFT2RIG.dot(R_TOP2BOT) / (np.sqrt(np.sum(B_LEFT2RIG * B_LEFT2RIG)) * np.sqrt(np.sum(R_TOP2BOT * R_TOP2BOT)))))
+    # angles -= np.mean(angles)
+    # angles = np.power(angles, 2)
+    # if angles[0] == np.max(angles):
+    #     x = find_point((LB_point, RT_point), (R_TOP2BOT, B_LEFT2RIG))
+    #     LT_point = [int(x[0][0]), int(x[1][0])]
+    # if angles[1] == np.max(angles):
+    #     x = find_point((LT_point, RB_point), (B_LEFT2RIG, L_TOP2BOT))
+    #     RT_point = [int(x[0][0]), int(x[1][0])]
+    # if angles[2] == np.max(angles):
+    #     x = find_point((LT_point, RB_point), (R_TOP2BOT, T_LEFT2RIG))
+    #     LB_point = [int(x[0][0]), int(x[1][0])]
+    # if angles[3] == np.max(angles):
+    #     x = find_point((LB_point, RT_point), (T_LEFT2RIG, L_TOP2BOT))
+    #     RB_point = [int(x[0][0]), int(x[1][0])]
 
     cv2.imwrite(out_path + 'lineImg.jpg', lineImg)
     cv2.imwrite(out_path + 'newLines_IMG.jpg', newLines_IMG)
@@ -197,7 +336,7 @@ def DL_check_rect(src_path,out_path,level='simple'):
     cv2.circle(img_new, tuple(LB_point), 10, (0, 255, 0), -1)
     cv2.imwrite(out_path + 'final.jpg', img_new)
 
-
+    img = cv2.imread(file_path_src)
     try:
         height = min(LB_point[1] - LT_point[1], RB_point[1] - RT_point[1])
         width = min(RT_point[0] - LT_point[0], RB_point[0] - LB_point[0])
@@ -212,7 +351,7 @@ def DL_check_rect(src_path,out_path,level='simple'):
     #    pass
     finally:
         pass
-    cv2.imwrite(out_path + '_____getPerspectiveTransform.jpg', img)
+    cv2.imwrite(out_path, img)
     result = {}
     result["area"] = (LB_point[1] - LT_point[1]) * (RB_point[0] - LB_point[0])
     result["all_area"] = height * width
