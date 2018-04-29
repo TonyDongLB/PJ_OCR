@@ -13,7 +13,6 @@ def change_wh(src_path,out_path):
     out_dir_path = os.path.dirname(out_path)
     if not os.path.exists(out_dir_path) :
         os.makedirs(out_dir_path)
-    logger.debug("src_path:"+src_path)
     #logger.debug("out_path:"+out_path)
     img = cv2.imread(src_path)
 
@@ -51,15 +50,20 @@ def change_wh(src_path,out_path):
         img = cv2.resize(img, (img_height,img_width ), interpolation=cv2.INTER_CUBIC)
     cv2.imwrite(out_path,img)
 
-def change_tb(src_path,out_path):
+def change_tb(img,out_path):
     if os.path.exists(out_path):
         os.remove(out_path)
     out_dir_path = os.path.dirname(out_path)
     if not os.path.exists(out_dir_path):
         os.makedirs(out_dir_path)
-    # 如果上线颠倒,进行180度的处理
+    # 利用章的信息来确定票据的正反
+    B, G, R = cv2.split(img)
+    R = R - B - G
+    retval, R_thre = cv2.threshold(R, thresh= 200, maxval= 255, type= cv2.THRESH_BINARY)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4, 4))
+    R_thre = cv2.morphologyEx(R_thre, cv2.MORPH_OPEN, kernel)
+    cv2.imwrite(out_path + '____R___.jpg', R_thre)
 
-    img = cv2.imread(src_path)
 
     img_height = img.shape[0]
     img_width = img.shape[1]

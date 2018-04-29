@@ -66,14 +66,16 @@ def img_process(filepath, config):
         if not os.path.exists(file_dir_img_root + file_name):
             os.makedirs(file_dir_img_root + file_name)
         if img.shape[1] * img.shape[0] > 2000 * 3000:
-            img = cv2.resize(img, (int(img.shape[1] / 2), int(img.shape[0] / 2)))
+            img = cv2.resize(img, (int(img.shape[1] / 4), int(img.shape[0] / 4)))
+            cv2.imwrite(file_path_src_copy, img)
+        else:
             cv2.imwrite(file_path_src_copy, img)
 
-    check_result = check.DL_check_rect(file_path_src_copy, file_path_rect, file_path_src)
-    # 大小重置
-    resize.resize(file_path_rect, file_path_resize, width)
-    change.change_tb(file_path_resize, file_path_change_tb)
+    check_result = check.new_check_rect(file_path_src_copy, file_path_rect, file_path_src)
 
+    # 大小重置
+    # resize.resize(file_path_rect, file_path_resize, width)
+    change.change_tb(check_result, file_path_change_tb)
 
 
 

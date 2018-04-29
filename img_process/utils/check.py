@@ -23,6 +23,167 @@ max_param1 = 35
 min_param2 = 0
 max_param2 = 5
 
+def new_check_rect(src_path,out_path, file_path_src):
+    out_dir_path = os.path.dirname(out_path)
+    if not os.path.exists(out_dir_path):
+        os.makedirs(out_dir_path)
+
+    img = cv2.imread(src_path)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=2, tileGridSize=(20, 20))
+    gray = clahe.apply(gray)
+    gray = cv2.GaussianBlur(gray, (7, 7), 0)
+    gray = cv2.medianBlur(gray, 5)
+
+    gray = cv2.Canny(gray, 40, 100)
+    kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    gray = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel2)
+    image, cnts, hierarchy = cv2.findContours(gray, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+    area_map = {}
+    for c in cnts:
+        area = cv2.contourArea(c)
+        area_map[area] = c
+    sort_keys = sorted(area_map.keys())
+    contourImg = np.zeros(img.shape[:2], dtype=np.uint8)
+    img_new = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    #画出面积最大的三个contour
+    for i in range(-3, 0):
+        c = area_map.get(sort_keys[i])
+        if i == -3:
+            img_new = cv2.drawContours(img_new, c, -1, (255, 0, 0), 5)
+            contourImg = cv2.drawContours(contourImg, c, -1, (255), 5)
+        else:
+            if i == -2:
+                img_new = cv2.drawContours(img_new, c, -1, (0, 255, 0), 5)
+                contourImg = cv2.drawContours(contourImg, c, -1, (255), 5)
+            else:
+                img_new = cv2.drawContours(img_new, c, -1, (0, 0, 255), 5)
+                contourImg = cv2.drawContours(contourImg, c, -1, (255), 5)
+
+    min_x_y_Contour = 10000000
+    max_x_y_Contour = -1
+    max_x_Contour = -10000000
+    max_y_Contour = -10000000
+
+    LT_point_Contour = -1
+    RB_point_Contour = -1
+    RT_point_Contour = -1
+    LB_point_Contour = -1
+    for i in range(len(c)):
+        (x, y) = c[i][0]
+        if x + y < min_x_y_Contour:
+            min_x_y_Contour = x + y
+            LT_point_Contour = [x, y]
+        if x + y > max_x_y_Contour:
+            max_x_y_Contour = x + y
+            RB_point_Contour = [x, y]
+        if x - y > max_x_Contour:
+            max_x_Contour = x - y
+            RT_point_Contour = [x, y]
+        if y - x > max_y_Contour:
+            max_y_Contour = y - x
+            LB_point_Contour = [x, y]
+
+    cv2.circle(img_new, tuple(LT_point_Contour), 20, (0, 0, 255), -1)
+    cv2.circle(img_new, tuple(LB_point_Contour), 20, (0, 0, 255), -1)
+    cv2.circle(img_new, tuple(RT_point_Contour), 20, (0, 0, 255), -1)
+    cv2.circle(img_new, tuple(RB_point_Contour), 20, (0, 0, 255), -1)
+
+    lines = cv2.HoughLinesP(contourImg, 1, np.pi / 360, int(min(img.shape[0], img.shape[1]) / 4),
+                            minLineLength= int(min(img.shape[0], img.shape[1]) / 20),
+                            maxLineGap=int(min(img.shape[0], img.shape[1]) / 20))  # 这里对最后参数使用了经验型的值
+    threshold = int(min(img.shape[0], img.shape[1]) / 4)
+    lines = lines[:, 0, :]
+
+    newLines_IMG = np.zeros(img.shape[:2], dtype=np.uint8)
+    contourImg = cv2.cvtColor(contourImg, cv2.COLOR_GRAY2RGB)
+    for (x1, y1, x2, y2) in lines:
+        if (x1 < 20 and x2 < 20) or (x1 > contourImg.shape[1] - 20 and x2 > contourImg.shape[1] - 20):
+            continue
+        if (y1 < 20 and y2 < 20) or (y1 > contourImg.shape[0] - 20 and y2 > contourImg.shape[0] - 20):
+            continue
+        cv2.line(contourImg, (x1, y1), (x2, y2), (0, 255, 0), 5)
+        cv2.line(newLines_IMG, (x1, y1), (x2, y2), (255), 3)
+
+
+    lines = cv2.HoughLines(newLines_IMG, 1, np.pi / 180, int(min(img.shape[0], img.shape[1]) / 4))
+    lines = lines[:, 0, :]
+    # 对距离很近切角度类同的直线进行归一，防止影响结果
+    lineCluster = []
+    newLines = []
+    needJump = []
+    # for i in range(len(lines)):
+    #     if i in needJump:
+    #         continue
+    #     line1 = lines[i]
+    #     j = i + 1
+    #     while (j < len(lines)):
+    #         line2 = lines[j]
+    #         if abs(line1[0] - line2[0]) < 40:
+    #             if abs(line1[1] - line2[1]) < np.pi / 4:
+    #                 lines[i][0] = (line1[0] + line2[0]) / 2
+    #                 lines[i][1] = (line1[1] + line2[1]) / 2
+    #                 needJump.append(j)
+    #         j += 1
+    #     newLines.append(lines[i])
+
+
+    # lines = newLines
+    line_points = []
+    for line in lines:
+        rho = line[0]  # 第一个元素是距离rho
+        theta = line[1]  # 第二个元素是角度theta
+        if (theta < (np.pi / 4.)) or (theta > (3. * np.pi / 4.0)):  # 垂直直线
+            # 该直线与第一行的交点
+            pt1 = (int(rho / np.cos(theta)), 0)
+            # 该直线与最后一行的焦点
+            pt2 = (int((rho - newLines_IMG.shape[0] * np.sin(theta)) / np.cos(theta)), newLines_IMG.shape[0])
+            # 绘制一条白线
+            cv2.line(contourImg, pt1, pt2, (255, 0, 0), 5)
+            line_points.append([pt1, pt2])
+            # cv2.line(newLines_IMG, pt1, pt2, 255, 5)
+        else:  # 水平直线
+            # 该直线与第一列的交点
+            pt1 = (0, int(rho / np.sin(theta)))
+            # 该直线与最后一列的交点
+            pt2 = (newLines_IMG.shape[1], int((rho - newLines_IMG.shape[1] * np.cos(theta)) / np.sin(theta)))
+            # 绘制一条直线
+            cv2.line(contourImg, pt1, pt2, (255, 0, 0), 5)
+            line_points.append([pt1, pt2])
+            # cv2.line(newLines_IMG, pt1, pt2, 255, 5)
+    #对比来自contour的边界点和来自线交点的边界点，如果相差不大，则以contour的边界点为准，否则使用线交点
+    min_x_y_Cross = 10000000
+    max_x_y_Cross = -1
+    max_x_Cross = -10000000
+    max_y_Cross = -10000000
+
+    LT_point_Cross = -1
+    RB_point_Cross = -1
+    RT_point_Cross = -1
+    LB_point_Cross = -1
+
+    LT_point = ((LT_point_Contour[0] + 20) * 4, (LT_point_Contour[1] + 20) * 4)
+    RB_point = ((RB_point_Contour[0] - 20) * 4, (RB_point_Contour[1] - 20) * 4)
+    RT_point = ((RT_point_Contour[0] - 20) * 4, (RT_point_Contour[1] + 20) * 4)
+    LB_point = ((LB_point_Contour[0] + 20) * 4, (LB_point_Contour[1] - 20) * 4)
+
+    height = min(LB_point[1] - LT_point[1], RB_point[1] - RT_point[1])
+    width = min(RT_point[0] - LT_point[0], RB_point[0] - LB_point[0])
+    pts1 = np.float32([LT_point, RT_point, LB_point, RB_point])
+    pts2 = np.float32([[0, 0], [width, 0], [0, height], [width, height]])
+    # 仿射变换
+    PerspectiveMatrix = cv2.getPerspectiveTransform(pts1, pts2)
+    img = cv2.imread(file_path_src)
+    perspectedIMG = cv2.warpPerspective(img, PerspectiveMatrix, (width, height))
+
+
+    cv2.imwrite(out_path + '_img_new.jpg', img_new)
+    cv2.imwrite(out_path + '__.jpg', contourImg)
+    cv2.imwrite(out_path, perspectedIMG)
+
+    pass
+
+
 #有点p1、p2,对应向量v1、v2，求相应直线交点
 def find_point(point, vector):
     a = []
@@ -93,7 +254,7 @@ def DL_check_rect(src_path,out_path, file_path_src):
     cv2.imwrite(out_path + 'lineImg.jpg', lineImg)
 
     # lines = cv2.HoughLines(lineImg, 1, np.pi / 180, int(min(img.shape[0], img.shape[1]) / 2))  # 这里对最后参数使用了经验型的值
-    lines = cv2.HoughLinesP(lineImg, 1, np.pi / 360, int(min(img.shape[0], img.shape[1]) / 3))  # 这里对最后参数使用了经验型的值
+    lines = cv2.HoughLinesP(lineImg, 1, np.pi / 360, int(min(img.shape[0], img.shape[1]) / 4))  # 这里对最后参数使用了经验型的值
 
     lines = lines[:,0,:]
     lineImg = cv2.cvtColor(lineImg, cv2.COLOR_GRAY2RGB)
@@ -133,7 +294,7 @@ def DL_check_rect(src_path,out_path, file_path_src):
         cv2.line(lineImg, (x1, y1), (x2, y2), (0, 255, 0), 5)
         cv2.line(newLines_IMG, (x1, y1), (x2, y2), 255, 5)
 
-    lines = cv2.HoughLines(newLines_IMG, 1, np.pi / 180, int(min(img.shape[0], img.shape[1]) / 2))
+    lines = cv2.HoughLines(newLines_IMG, 1, np.pi / 180, int(min(img.shape[0], img.shape[1]) / 2.5))
     lines = lines[:, 0, :]
     # 对距离很近切角度类同的直线进行归一，防止影响结果
     newLines = []
@@ -323,7 +484,7 @@ def DL_check_rect(src_path,out_path, file_path_src):
     #         RB_point = [x - 20, y - 20]
     #     if x - y > max_x:
     #         max_x = x - y
-    #         RT_point = [x - 20 , y + 20]
+    #         RT_point = [x - 20, y + 20]
     #     if y - x > max_y:
     #         max_y = y - x
     #         LB_point = [x + 20, y - 20]
@@ -352,13 +513,13 @@ def DL_check_rect(src_path,out_path, file_path_src):
     finally:
         pass
     cv2.imwrite(out_path, img)
-    result = {}
-    result["area"] = (LB_point[1] - LT_point[1]) * (RB_point[0] - LB_point[0])
-    result["all_area"] = height * width
-    result["img"] = img
-    result["img_new"] = img_new
-    result["c"] = c
-    print(result["area"],result["all_area"],area/(height * width))
+    result = img
+    # result["area"] = (LB_point[1] - LT_point[1]) * (RB_point[0] - LB_point[0])
+    # result["all_area"] = height * width
+    # result["img"] = img
+    # result["img_new"] = img_new
+    # result["c"] = c
+    # print(result["area"],result["all_area"],area/(height * width))
     return result
 
 
