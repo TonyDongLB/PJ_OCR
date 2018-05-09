@@ -180,7 +180,7 @@ def new_check_rect(src_path,out_path, file_path_src):
     cv2.imwrite(out_path + '_img_new.jpg', img_new)
     cv2.imwrite(out_path + '__.jpg', contourImg)
     cv2.imwrite(out_path, perspectedIMG)
-
+    return perspectedIMG
     pass
 
 
