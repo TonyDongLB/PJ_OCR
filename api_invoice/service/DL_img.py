@@ -7,6 +7,7 @@ import img_process.utils.resize as resize
 import img_process.utils.change as change
 import img_process.utils.check as check
 import img_process.utils.box as box
+import img_process.utils.segment as segment
 import datetime
 import threadpool
 import time
@@ -52,7 +53,9 @@ def img_process(filepath, config):
     # 上下调整图
     file_path_change_tb = file_dir_img_root + file_name + '/004_change_tb_' + file_name + '.' + file_suffix
 
-    file_path_box_dir = file_dir_img_root + file_name + '/box'
+    file_path_box_dir = file_dir_img_root + file_name + '/PJBox/'
+    file_path_box_dir_contour = file_path_box_dir + '/contours/'
+    file_path_box_dir_char = file_path_box_dir + '/chars/'
 
     if not os.path.exists(file_path_src):
         print('图片:' + file_path_src +' 不存在，请检查！')
@@ -75,9 +78,9 @@ def img_process(filepath, config):
 
     # 大小重置
     # resize.resize(file_path_rect, file_path_resize, width)
-    change.change_tb(check_result, file_path_change_tb)
-
-
+    change_tb_result = change.change_tb(check_result, file_path_change_tb)
+    imgs = segment.segmentPJ(change_tb_result, file_path_box_dir_contour)
+    segment.segmentChars(imgs, file_path_box_dir_char)
 
 
 
