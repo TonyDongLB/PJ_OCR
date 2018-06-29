@@ -9,6 +9,7 @@ def cv2PIL(cv2_image):
     PIL_image = Image.fromarray(cv2_image)
     return PIL_image
 
+# 使用波峰波谷方法进行切割
 def extract_peek_ranges_from_array(array_vals, minimun_val=20000, minimun_range=10):
     start_i = None
     end_i = None
@@ -21,7 +22,7 @@ def extract_peek_ranges_from_array(array_vals, minimun_val=20000, minimun_range=
         elif val < minimun_val and start_i is not None:
             end_i = i
             if end_i - start_i >= minimun_range:
-                peek_ranges.append((start_i, end_i))
+                peek_ranges.append([start_i, end_i])
             start_i = None
             end_i = None
         elif val < minimun_val and start_i is None:
@@ -30,6 +31,7 @@ def extract_peek_ranges_from_array(array_vals, minimun_val=20000, minimun_range=
             raise ValueError("cannot parse this case...")
     return peek_ranges
 
+# 按照中数进行补充切割
 def median_split_ranges(peek_ranges):
     new_peek_ranges = []
     widthes = []
@@ -49,6 +51,38 @@ def median_split_ranges(peek_ranges):
         else:
             new_peek_ranges.append(peek_range)
     return new_peek_ranges
+
+# 按照众数进行补充切割
+def mode_split_ranges(peek_ranges):
+    new_peek_ranges = []
+    widthes = []
+    for peek_range in peek_ranges:
+        w = peek_range[1] - peek_range[0] + 1
+        widthes.append(w)
+    counts = np.bincount(widthes)
+    mode = np.argmax(counts)
+
+    # 当前部分是否被合并
+    merged = False
+    for i, peek_range in enumerate(peek_ranges):
+        if merged:
+            merged = False
+            continue
+        if widthes[i] in range(int(mode * 0.75), int(mode * 1.25)):
+            new_peek_ranges.append(peek_range)
+        else:
+            # 处理合并的情况
+            if widthes[i] < 0.75:
+                if widthes[i + 1] < mode * 0.5:
+                    new_peek_ranges.append((peek_ranges[i][0], peek_ranges[i + 1][1]))
+                    merged = True
+                else:
+                    new_peek_ranges.append(peek_range)
+            if widthes[i] >= 1.25:
+                new_peek_ranges.append((peek_range[0], int((peek_range[0] + peek_range[1]) / 2)))
+                new_peek_ranges.append((int((peek_range[0] + peek_range[1]) / 2), peek_range[1]))
+    return new_peek_ranges
+    pass
 
 #将整个票据分割为各个部分
 def segmentPJ(img, file_path_box_dir):
@@ -289,12 +323,14 @@ def segmentChars(imgs, file_path_box_dir_char):
             for struct in newCnts:
                 if struct[2]:
                     x_loc, y_loc, width, height = struct[1]
-                    # if width* height < 400:
-                    #     continue
+                    # 过小，作为噪声处理
                     if width < 10 or height < 10:
+                        continue
+                    if width* height < 300:
                         continue
                     # # 需要分割的情况
                     this_block = img_copy[y_loc:y_loc + height, x_loc:x_loc + width]
+
                     # 是否需要分割的FLAG
                     have_rows = False
                     if height > 60 and width > 50:
@@ -333,7 +369,7 @@ def segmentChars(imgs, file_path_box_dir_char):
                                         row2["end"] = row_y + step_row
                                         rows2.append(row2)
                                     else:
-                                        # 属于同一行
+                                        # 根据当前的行号与上一行对比，看是否能否连接起来
                                         last_row = rows2[row2_len - 1]
                                         last_row_end = last_row["end"]
                                         if row_y == last_row_end:
@@ -344,7 +380,7 @@ def segmentChars(imgs, file_path_box_dir_char):
                                             row2["begin"] = row_y
                                             row2["end"] = row_y + step_row
                                             rows2.append(row2)
-                        # 将比较小的row合并到一起
+                        # 将比较小的row合并到一起，此时并没有考虑行之间的连续性
                         addition = 0
                         for indexOfRows in range(len(rows2)):
                             row = rows2[indexOfRows]
@@ -370,7 +406,7 @@ def segmentChars(imgs, file_path_box_dir_char):
                         result_Rows.append([x_loc, y_loc, width, height])
                         img = cv2.rectangle(img, (x_loc, y_loc), (x_loc + width, y_loc + height), (0, 255, 0), 2)
 
-            # # tesseract识别
+            # # tesseract识别，识别率及其低下
             # for x_loc, y_loc, region_width, region_height in result_Rows:
             #     region_col = img_copy[y_loc:y_loc + region_height, x_loc:x_loc + region_width]
             #     region_col = cv2PIL(region_col)
@@ -390,10 +426,42 @@ def segmentChars(imgs, file_path_box_dir_char):
                     vertical_sum,
                     minimun_val=40,
                     minimun_range=1)
+                # 如果没有进行分割
                 if len(vertical_peek_ranges) == 0:
                     vertical_peek_ranges.append((0, region_width))
-                else:
-                    vertical_peek_ranges = median_split_ranges(vertical_peek_ranges)
+                elif len(vertical_peek_ranges) > 1:
+                    # 处理一些过于小的部分
+                    new_vertical_peek_ranges = []
+                    need_jump = False
+                    for loc, now_box in enumerate(vertical_peek_ranges):
+                        if need_jump:
+                            need_jump = False
+                            continue
+                        w = now_box[1] - now_box[0]
+                        if w < 10:
+                            if loc == 0:
+                                next_box = vertical_peek_ranges[loc + 1]
+                                new_vertical_peek_ranges.append([now_box[0], next_box[1]])
+                                need_jump = True
+                            elif loc == len(vertical_peek_ranges) - 1:
+                                new_vertical_peek_ranges[-1][1] = now_box[1]
+                            else:
+                                pre_box = vertical_peek_ranges[loc - 1]
+                                next_box = vertical_peek_ranges[loc + 1]
+                                if pre_box[1] - pre_box[0] > next_box[1] - next_box[0]:
+                                    new_vertical_peek_ranges.append([now_box[0], next_box[1]])
+                                    need_jump = True
+                                else:
+                                    new_vertical_peek_ranges[-1][1] = now_box[1]
+                        else:
+                            new_vertical_peek_ranges.append(now_box)
+
+                    vertical_peek_ranges = new_vertical_peek_ranges
+
+                # 如果有剩余部分
+                if region_width - vertical_peek_ranges[-1][1] > 50:
+                    vertical_peek_ranges.append((vertical_peek_ranges[-1][1], region_width))
+
                 for vertical_range in vertical_peek_ranges:
                     x = x_loc + vertical_range[0]
                     y = y_loc
@@ -402,15 +470,6 @@ def segmentChars(imgs, file_path_box_dir_char):
                     pt1 = (x + 2, y + 2)
                     pt2 = (x + w - 2, y + h - 2)
                     cv2.rectangle(img, pt1, pt2, (0, 0, 255), 1)
-
-
-
-
-
-
-
-
-
 
 
 
